@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Index Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Book Index Generator</h1>
+            <p class="subtitle">Generate a professional index for your book</p>
+        </header>
+
+        <main>
+            <div class="notices">
+                <div class="notice notice-warning">
+                    <strong>⚠️ Important:</strong> Ensure your PDF starts at page 1 of your actual book content. Remove any front matter (title page, copyright, TOC, etc.) or the page numbers in the index will be incorrect.
+                </div>
+                <div class="notice notice-info">
+                    <strong>ℹ️ Note:</strong> After generating the index, manually review and remove any results from Works Cited, Bibliography, or References sections.
+                </div>
+            </div>
+
+            <form id="indexForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="pdfFile">Upload PDF</label>
+                    <input type="file" id="pdfFile" name="pdf" accept=".pdf" required>
+                    <small>Maximum file size: 50MB</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="terms">Enter Terms (one per line)</label>
+                    <textarea
+                        id="terms"
+                        name="terms"
+                        rows="8"
+                        placeholder="Example:&#10;artificial intelligence (AI, machine learning)&#10;neural networks&#10;deep learning"
+                    ></textarea>
+                    <small>Use parentheses for variants: term (variant1, variant2)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="names">Enter Names in Index Format (one per line)</label>
+                    <textarea
+                        id="names"
+                        name="names"
+                        rows="8"
+                        placeholder="Example:&#10;Bush, George W.&#10;Obama, Barack&#10;Clinton, Hillary"
+                    ></textarea>
+                    <small>Format: "Last, First" - will search for "First Last" in PDF but display as entered</small>
+                </div>
+
+                <button type="submit" id="submitBtn">Generate Index</button>
+            </form>
+
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>Processing your PDF...</p>
+            </div>
+
+            <div id="error" class="error hidden"></div>
+
+            <div id="notFound" class="not-found hidden">
+                <h3>⚠️ Terms Not Found</h3>
+                <p>The following terms were not found in the PDF:</p>
+                <ul id="notFoundList"></ul>
+            </div>
+
+            <div id="results" class="results hidden">
+                <div class="results-header">
+                    <h2>Generated Index</h2>
+                    <button id="copyBtn" class="copy-btn">Copy to Clipboard</button>
+                </div>
+                <pre id="indexOutput"></pre>
+            </div>
+        </main>
+
+        <footer>
+            <p class="footer-help">Terms with quotation marks will be processed without quotes. Content in parentheses represents search variants.</p>
+            <div class="footer-credits">
+                <p>Developed by <a href="https://stefanomorello.com" target="_blank" rel="noopener">Stefano Morello</a></p>
+                <p>
+                    <a href="https://github.com/smorello87/book-index" target="_blank" rel="noopener">View on GitHub</a> |
+                    Licensed under <a href="https://www.gnu.org/licenses/gpl-3.0.en.html" target="_blank" rel="noopener">GNU GPL v3</a>
+                </p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const form = document.getElementById('indexForm');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const results = document.getElementById('results');
+        const notFound = document.getElementById('notFound');
+        const notFoundList = document.getElementById('notFoundList');
+        const indexOutput = document.getElementById('indexOutput');
+        const copyBtn = document.getElementById('copyBtn');
+        const submitBtn = document.getElementById('submitBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // Hide previous results/errors
+            error.classList.add('hidden');
+            results.classList.add('hidden');
+            notFound.classList.add('hidden');
+            loading.classList.remove('hidden');
+            submitBtn.disabled = true;
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/generate-index', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'An error occurred');
+                }
+
+                // Display not-found terms if any
+                if (data.not_found && data.not_found.length > 0) {
+                    notFoundList.innerHTML = '';
+                    data.not_found.forEach(term => {
+                        const li = document.createElement('li');
+                        li.textContent = term;
+                        notFoundList.appendChild(li);
+                    });
+                    notFound.classList.remove('hidden');
+                }
+
+                // Display results
+                if (data.index) {
+                    indexOutput.textContent = data.index;
+                    results.classList.remove('hidden');
+                }
+
+            } catch (err) {
+                error.textContent = err.message;
+                error.classList.remove('hidden');
+            } finally {
+                loading.classList.add('hidden');
+                submitBtn.disabled = false;
+            }
+        });
+
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(indexOutput.textContent);
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyBtn.textContent = 'Copy to Clipboard';
+                }, 2000);
+            } catch (err) {
+                alert('Failed to copy to clipboard');
+            }
+        });
+    </script>
+</body>
+</html>
