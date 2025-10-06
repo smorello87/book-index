@@ -59,6 +59,7 @@ Obama, Barack: 18, 29
 - **Page Numbering**: Remove all pages before page 1 of your book content (title page, copyright, table of contents, etc.) or the page numbers will be incorrect
 - **Works Cited**: Manually review results to remove any matches from bibliography/references sections
 - **Quotation Marks**: All types of quotation marks (straight, curly, smart quotes) are automatically stripped from the beginning and end of terms, but apostrophes within words are preserved
+- **Privacy**: Uploaded PDFs are processed entirely in memory and are never saved to disk. Zero retention policy - your files are not stored or accessible to the developer
 
 ## Running Locally
 
