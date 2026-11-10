@@ -180,3 +180,13 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+# macOS
+.DS_Store
+
+# Node / Cloudflare
+node_modules/
+.wrangler/
+.dev.vars
+
+# Local browser testing
+.playwright-mcp/

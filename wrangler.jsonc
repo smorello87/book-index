@@ -1,0 +1,8 @@
+// Cloudflare Worker that serves the static app in ./public (no server code).
+{
+  "name": "book-index",
+  "compatibility_date": "2026-10-20",
+  "assets": {
+    "directory": "./public"
+  }
+}

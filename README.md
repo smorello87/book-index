@@ -1,157 +1,68 @@
-# Book Index Generator
+# Index Generator
 
-A Flask web application that automatically generates professional book indexes from PDF files. Authors can upload their PDFs and input search terms to create a formatted index ready to copy-paste into their books.
+Generate a book index from a PDF. Upload the book, list the terms and names to index, and get back entries with page numbers, ready to paste into a manuscript.
 
-**[Live Demo →](https://veritas44.pythonanywhere.com/)**
+**Use it:** [stefanomorello.com/book-index.html](https://stefanomorello.com/book-index.html)
+
+The tool runs entirely in the browser with [PDF.js](https://mozilla.github.io/pdf.js/). The PDF is never uploaded anywhere: the server only delivers the page.
 
 ## Features
 
-- **PDF Processing**: Upload PDFs and extract term locations page-by-page
-- **Smart Term Matching**:
-  - Handles quotation marks (automatically stripped from search)
-  - Supports term variants with parentheses: `artificial intelligence (AI, machine learning)`
-  - Matches across line breaks in PDF text
-  - Handles punctuation (e.g., "Help!" will be found correctly)
-- **Name Reversal**: Separate input for names in index format
-  - Input: "Bush, George W." → Searches for: "George W. Bush" → Displays: "Bush, George W.: 5, 12, 28"
-- **Alphabetical Sorting**: All results automatically sorted case-insensitively
-- **Not Found Tracking**: Shows which terms were not found in the PDF
-- **Copy-to-Clipboard**: One-click copy of the generated index
+- **Terms with variants.** `artificial intelligence (AI, machine learning)` finds all three and lists them under one entry.
+- **Names in index form.** `Bush, George W.` searches for "George W. Bush" and is listed as typed. A single name (`Madonna`) is searched as typed.
+- **Real page numbers.** Uses the page numbering stored in the PDF when there is one (so front matter can be `i, ii, iii`). Or set "Book page 1 is PDF page" to skip the front matter yourself.
+- **Typeset text matches what you type.** Curly apostrophes (`You’re`), ligatures (`ﬁ`), words hyphenated across lines (`intel-` / `ligence`), letter-spaced text and footnote markers (`Obama²`) are all handled.
+- **Whole words only.** `help` does not match `helping`, and `1984` does not match `19845`. Punctuation in a term (`Help!`) is fine.
+- Alphabetical output grouped by letter, a list of terms that were not found, and one-click copy as plain text (`term: 5, 12, 28`).
 
-## How It Works
+Still check the result by hand: remove entries that come from the bibliography or works cited. Scanned PDFs need OCR first.
 
-1. **Upload**: Select a PDF file (max 50MB)
-2. **Enter Terms**:
-   - Regular terms in the "Terms" field (one per line)
-   - Names in "Last, First" format in the "Names" field
-3. **Generate**: Click "Generate Index"
-4. **Copy**: Results are formatted and ready to paste into your book
-
-### Input Format Examples
-
-**Regular Terms:**
-```
-artificial intelligence (AI, machine learning)
-neural networks
-"deep learning"
-climate change
-```
-
-**Names:**
-```
-Bush, George W.
-Obama, Barack
-Clinton, Hillary
-```
-
-### Output Format
+## How it's built
 
 ```
-Bush, George W.: 5, 12, 28
-climate change: 10, 15, 30, 42
-Clinton, Hillary: 3, 45
-neural networks: 7, 22, 35
-Obama, Barack: 18, 29
+public/            the whole site, served as static files
+  index.html       page
+  app.js           UI: reads the PDF, shows progress, renders the index
+  extract.js       PDF.js text extraction (shared with the tests)
+  indexer.js       matching rules (pure functions, shared with the tests)
+  theme.js         iframe embedding: follows the parent site's theme, reports its height
+  vendor/pdfjs/    PDF.js build, cmaps and standard fonts (from pdfjs-dist)
+  _headers         security headers (CSP; only stefanomorello.com may embed it)
+wrangler.jsonc     Cloudflare Worker config: static assets only, no server code
+tests/             Node tests (npm test) and tests of the legacy Flask app
+app.py, templates/, static/   legacy Flask version (PyMuPDF), kept as a reference implementation
 ```
 
-## Important Notes
+## Development
 
-- **Page Numbering**: Remove all pages before page 1 of your book content (title page, copyright, table of contents, etc.) or the page numbers will be incorrect
-- **Works Cited**: Manually review results to remove any matches from bibliography/references sections
-- **Quotation Marks**: All types of quotation marks (straight, curly, smart quotes) are automatically stripped from the beginning and end of terms, but apostrophes within words are preserved
-- **Privacy**: Uploaded PDFs are processed entirely in memory and are never saved to disk. Zero retention policy - your files are not stored or accessible to the developer
-
-## Running Locally
-
-### Prerequisites
-- Python 3.8+
-- pip
-
-### Installation
-
-1. Clone the repository:
 ```bash
-git clone https://github.com/smorello87/book-index.git
-cd book-index
+npm install
+npm test          # matching rules + an end-to-end run of tests/fixtures/sample.pdf through PDF.js
+npm run dev       # http://localhost:8787
 ```
 
-2. Create a virtual environment:
-```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+Upgrading PDF.js: change the `pdfjs-dist` version in `package.json`, then `npm install && npm run vendor`.
 
-3. Install dependencies:
+## Deployment
+
+The site is a Cloudflare Worker with static assets. The Worker is connected to this GitHub repository (Workers Builds), so every push to `main` deploys automatically. There is no server to keep alive and nothing to renew.
+
+To deploy by hand: `npx wrangler deploy`.
+
+On stefanomorello.com, `book-index.html` embeds the Worker in an iframe. The two pages talk over `postMessage`: the site sends its light/dark theme, and the tool reports its height so the frame never scrolls on its own.
+
+## Legacy Flask version
+
+`app.py` is the original server version (previously hosted on PythonAnywhere). It now follows the same matching rules as `public/indexer.js`, and it is useful for checking PDF.js results against PyMuPDF:
+
 ```bash
 pip install -r requirements.txt
+python -m unittest discover tests
+python app.py     # http://127.0.0.1:5000
 ```
-
-4. Run the application:
-```bash
-python app.py
-```
-
-5. Open your browser to:
-```
-http://127.0.0.1:5000
-```
-
-## Deploying to Production
-
-### PythonAnywhere (Free Tier)
-
-1. Create account at [pythonanywhere.com](https://www.pythonanywhere.com)
-2. Upload files or clone from GitHub
-3. Create virtual environment:
-```bash
-mkvirtualenv --python=/usr/bin/python3.10 book-index-venv
-pip install -r requirements.txt
-```
-4. Configure web app in the Web tab (see PythonAnywhere docs)
-5. Set WSGI file and virtualenv path
-6. Reload the app
-
-### Other Platforms
-
-The app can be deployed to any platform that supports Flask:
-- **Render**: Connect GitHub repo for auto-deploy
-- **Railway**: Free tier with GitHub integration
-- **Heroku**: Add `Procfile` with `web: gunicorn app:app`
-- **DigitalOcean/Linode**: Use Gunicorn + Nginx
-
-## Technical Details
-
-### Architecture
-- **Backend**: Flask (Python)
-- **PDF Processing**: PyMuPDF (fitz)
-- **Search Pattern**: Regex with negative lookahead/lookbehind for word boundaries
-- **Text Normalization**: Whitespace collapsed to handle line breaks
-- **Frontend**: Vanilla JavaScript, responsive CSS
-
-### Key Functions
-- `process_terms(terms_text, reverse_names=False)`: Preprocesses terms and handles name reversal
-- `create_index_from_pdf(pdf_file, terms_text, names_text)`: Main processing function that searches PDF and returns sorted results
-
-## Dependencies
-
-- Flask 3.0.0
-- PyMuPDF 1.23.8
-- Werkzeug 3.0.1
 
 ## License
 
-GNU General Public License v3.0
+GNU General Public License v3.0. PDF.js is Apache-2.0.
 
-## Author
-
-Developed by [Stefano Morello](https://stefanomorello.com)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Links
-
-- **Live Demo**: https://veritas44.pythonanywhere.com/
-- **GitHub Repository**: https://github.com/smorello87/book-index
-- **Author Website**: https://stefanomorello.com
+Developed by [Stefano Morello](https://stefanomorello.com).

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Index Generator | Stefano Morello</title>
+    <meta name="description" content="Generate a book index from a PDF. It runs in your browser; your PDF is never uploaded.">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=Crimson+Pro:ital,wght@0,300..600;1,300..600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+    <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script type="module" src="app.js"></script>
+</head>
+<body>
+    <main class="page">
+        <a class="back-link" href="https://stefanomorello.com/">Stefano Morello</a>
+
+        <header class="intro">
+            <h1>Index Generator</h1>
+            <p class="lede">Upload a book as a PDF, list the terms and names you want indexed, and get back an index with page numbers, ready to paste into your manuscript.</p>
+            <p class="aside">Your PDF stays on your computer. It is read by your browser and never uploaded. Before you use the index, remove any entries that come from the bibliography or works cited.</p>
+        </header>
+
+        <form id="indexForm" class="index-form" novalidate>
+            <fieldset class="field">
+                <legend class="field-label">The book</legend>
+                <label class="dropzone" id="dropzone" for="pdfFile">
+                    <input type="file" id="pdfFile" name="pdf" accept="application/pdf,.pdf" class="visually-hidden">
+                    <span class="dropzone-text" id="dropzoneText">Choose a PDF, or drop it here</span>
+                    <span class="dropzone-file" id="dropzoneFile"></span>
+                </label>
+                <p class="offset-line">
+                    <label for="pageOne">Book page 1 is PDF page</label>
+                    <input type="number" id="pageOne" name="pageOne" min="1" step="1" inputmode="numeric" placeholder="1">
+                </p>
+                <p class="hint">Leave this blank to use the page numbers stored in the PDF, or to count from its first page if it has none. If you fill it in, pages before it (title page, contents) are skipped.</p>
+            </fieldset>
+
+            <div class="field-pair">
+                <div class="field">
+                    <label class="field-label" for="terms">Terms</label>
+                    <textarea id="terms" name="terms" rows="10" spellcheck="false"
+                        placeholder="artificial intelligence (AI, machine learning)&#10;neural networks&#10;deep learning"></textarea>
+                    <p class="hint">One per line. Put variants in parentheses: <span class="example">term (variant, variant)</span>.</p>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="names">Names</label>
+                    <textarea id="names" name="names" rows="10" spellcheck="false"
+                        placeholder="Bush, George W.&#10;Obama, Barack&#10;Madonna"></textarea>
+                    <p class="hint">One per line, as <span class="example">Last, First</span>. The PDF is searched for "First Last"; the index lists the name as you typed it.</p>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button type="submit" id="submitBtn" class="button button-primary">Generate index</button>
+                <div id="progress" class="progress" hidden>
+                    <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+                    <p class="progress-text" id="progressText" role="status" aria-live="polite"></p>
+                </div>
+            </div>
+
+            <p id="error" class="error" role="alert" hidden></p>
+        </form>
+
+        <section id="results" class="results" hidden aria-labelledby="resultsTitle">
+            <div class="results-head">
+                <h2 id="resultsTitle">Index</h2>
+                <button type="button" id="copyBtn" class="button button-secondary">Copy index</button>
+            </div>
+            <p class="results-meta" id="resultsMeta"></p>
+            <div class="index-output" id="indexOutput" tabindex="0"></div>
+        </section>
+
+        <section id="notFound" class="not-found" hidden aria-labelledby="notFoundTitle">
+            <h3 id="notFoundTitle"></h3>
+            <p class="hint">Check the spelling, or add the form the book uses as a variant in parentheses.</p>
+            <ul id="notFoundList"></ul>
+        </section>
+
+        <footer class="colophon">
+            <p>Built by <a href="https://stefanomorello.com">Stefano Morello</a>. <a href="https://github.com/smorello87/book-index">Source on GitHub</a>, under the GNU GPL v3.</p>
+        </footer>
+    </main>
+</body>
+</html>
