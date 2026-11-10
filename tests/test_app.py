@@ -65,5 +65,11 @@ class ParityTests(unittest.TestCase):
                          ['King, Martin Luther, Jr.', 'Lagos', 'Łódź', 'Mars', '#MeToo', 'Ørsted', 'Oslo', 'zebra'])
 
 
+    def test_match_case_option(self):
+        book = pages('Tell us more.', 'The US economy', 'a bush in bloom', 'George Bush')
+        self.assertEqual(build_index(book, 'US\nBush')['index'], 'Bush: 3, 4\nUS: 1, 2')
+        self.assertEqual(build_index(book, 'US\nBush', match_case=True)['index'], 'Bush: 4\nUS: 2')
+
+
 if __name__ == '__main__':
     unittest.main()

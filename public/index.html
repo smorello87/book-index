@@ -53,6 +53,14 @@
                 </div>
             </div>
 
+            <div class="field option">
+                <label class="checkbox" for="matchCase">
+                    <input type="checkbox" id="matchCase" name="matchCase">
+                    <span>Match capitalization</span>
+                </label>
+                <p class="hint">When on, "US" finds "US" but not "us", and "Bush" finds the name but not the shrub. Leave it off to ignore capitals.</p>
+            </div>
+
             <div class="actions">
                 <button type="submit" id="submitBtn" class="button button-primary">Generate index</button>
                 <div id="progress" class="progress" hidden>

@@ -200,6 +200,7 @@ form.addEventListener('submit', async (e) => {
   const file = fileInput.files[0];
   const terms = $('terms').value;
   const names = $('names').value;
+  const matchCase = $('matchCase').checked;
   const pageOneRaw = $('pageOne').value.trim();
   const pageOne = pageOneRaw ? Number.parseInt(pageOneRaw, 10) : null;
 
@@ -223,7 +224,7 @@ form.addEventListener('submit', async (e) => {
 
     let outcome;
     try {
-      const job = { pdf: await file.arrayBuffer(), terms, names, pageOne };
+      const job = { pdf: await file.arrayBuffer(), terms, names, pageOne, matchCase };
       outcome = await runJob(worker, job, setProgress, () => {
         progressText.textContent = 'Matching terms';
       });
@@ -243,7 +244,8 @@ form.addEventListener('submit', async (e) => {
       plainIndex = result.index;
       renderIndex(result.entries);
       const count = result.entries.length;
-      resultsMeta.textContent = `${count} ${count === 1 ? 'entry' : 'entries'} from ${pageCount} pages. ${describeNumbering(source, pageOne)}`;
+      const caseNote = matchCase ? ' Capitalization was matched.' : '';
+      resultsMeta.textContent = `${count} ${count === 1 ? 'entry' : 'entries'} from ${pageCount} pages. ${describeNumbering(source, pageOne)}${caseNote}`;
       results.hidden = false;
     }
 

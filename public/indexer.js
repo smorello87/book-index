@@ -7,16 +7,17 @@ const EDGE_QUOTES = /^["'`\u00B4\u2018\u2019\u201C\u201D\u201E\u201F\u2039\u203A
 
 /**
  * Normalize text so a term typed on a keyboard matches typeset PDF text.
- * Applied identically to PDF text and to search terms.
+ * Applied identically to PDF text and to search terms. Lowercases too, unless
+ * `keepCase` is set (used by the "Match capitalization" option).
  */
-export function normalizeText(s) {
-  return s
+export function normalizeText(s, { keepCase = false } = {}) {
+  const folded = s
     .replace(/\u00AD/g, '') // soft hyphens
     .replace(/[\u2018\u2019\u201A\u201B\u2032\u02BC`\u00B4]/g, "'") // curly/typographic apostrophes
     .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
     .replace(/[\u2010\u2011]/g, '-') // Unicode hyphens
-    .normalize('NFKC') // ligatures (ﬁ → fi), non-breaking spaces, composed accents
-    .toLowerCase();
+    .normalize('NFKC'); // ligatures (ﬁ → fi), non-breaking spaces, composed accents
+  return keepCase ? folded : folded.toLowerCase();
 }
 
 const collapse = (s) => s.replace(/\s+/g, ' ').trim();
@@ -28,10 +29,10 @@ const LINE_END_HYPHEN = /(\p{L})[-\u2010\u2011][^\S\n]*\n\s*(?=\p{L})/gu;
  * Return the searchable forms of one page's text. A word split across lines with a
  * hyphen is searchable both rejoined ("intelligence") and as a compound ("well-known").
  */
-export function pageVariants(rawText) {
+export function pageVariants(rawText, matchCase = false) {
   const t = rawText.replace(/\u00AD(?=[^\S\n]*\n)/g, '-'); // soft hyphen at a line end
   const forms = [t, t.replace(LINE_END_HYPHEN, '$1'), t.replace(LINE_END_HYPHEN, '$1-')];
-  return [...new Set(forms.map((s) => collapse(normalizeText(s))))];
+  return [...new Set(forms.map((s) => collapse(normalizeText(s, { keepCase: matchCase }))))];
 }
 
 const escapeRegExp = (s) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&');
@@ -92,7 +93,7 @@ export function addTerms(entries, text, reverseNames = false) {
     if (!entries.has(display)) entries.set(display, new Set());
     const set = entries.get(display);
     for (const v of variants) {
-      const norm = collapse(normalizeText(v));
+      const norm = collapse(normalizeText(v, { keepCase: true })); // buildIndex folds case if asked
       if (norm) set.add(norm);
     }
   }
@@ -128,9 +129,10 @@ export function pageNumbering(numPages, labels = null, bookPageOneAt = null) {
  * Build the index.
  *
  * @param {{number: string|null, text: string}[]} pages  in document order; number null = skip
- * @returns {{index: string, entries: {term: string, pages: string[]}[], notFound: string[]}}
+ * @param {{matchCase?: boolean}} [options]  matchCase: "US" no longer matches "us"
+ * @returns {{index: string, entries: {term: string, pages: string[], letter: string}[], notFound: string[]}}
  */
-export function buildIndex(pages, termsText, namesText = '') {
+export function buildIndex(pages, termsText, namesText = '', { matchCase = false } = {}) {
   const entries = new Map();
   addTerms(entries, termsText, false);
   addTerms(entries, namesText, true);
@@ -139,14 +141,17 @@ export function buildIndex(pages, termsText, namesText = '') {
     .filter(([, variants]) => variants.size)
     .map(([term, variants]) => ({
       term,
-      variants: [...variants].map((text) => ({ text, re: variantRegExp(text) })),
+      variants: [...new Set([...variants].map((v) => (matchCase ? v : v.toLowerCase())))].map((text) => ({
+        text,
+        re: variantRegExp(text),
+      })),
       pages: [],
       seen: new Set(),
     }));
 
   for (const page of pages) {
     if (page.number == null) continue;
-    const forms = pageVariants(page.text);
+    const forms = pageVariants(page.text, matchCase);
     for (const m of matchers) {
       if (m.seen.has(page.number)) continue;
       // The substring check is fast and rules out most pages before the regex runs.

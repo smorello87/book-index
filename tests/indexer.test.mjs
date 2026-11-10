@@ -57,7 +57,7 @@ test('the same entry in both fields is merged, not overwritten', () => {
   const entries = new Map();
   addTerms(entries, 'Smith, John', false);
   addTerms(entries, 'Smith, John', true);
-  assert.deepEqual([...entries.get('Smith, John')].sort(), ['john smith', 'smith, john']);
+  assert.deepEqual([...entries.get('Smith, John')].sort(), ['John Smith', 'Smith, John']);
 });
 
 test('results sort alphabetically ignoring case and accents', () => {
@@ -128,4 +128,19 @@ test('sorting and letter groups share one key: leading punctuation and Ł/Ø ign
   const r = buildIndex(pages('#MeToo Łódź Ørsted Lagos Oslo Mars zebra'), '#MeToo\nŁódź\nØrsted\nLagos\nOslo\nMars\nzebra');
   assert.deepEqual(r.entries.map((e) => e.term), ['Lagos', 'Łódź', 'Mars', '#MeToo', 'Ørsted', 'Oslo', 'zebra']);
   assert.deepEqual([...new Set(r.entries.map((e) => e.letter))], ['L', 'M', 'O', 'Z']);
+});
+
+test('match capitalization: off by default, and "US" stops matching "us" when on', () => {
+  const book = pages('Tell us more.', 'The US economy', 'a bush in bloom', 'George Bush');
+  const loose = buildIndex(book, 'US\nBush');
+  assert.deepEqual(pagesFor(loose, 'US'), ['1', '2']);
+  assert.deepEqual(pagesFor(loose, 'Bush'), ['3', '4']);
+  const strict = buildIndex(book, 'US\nBush', '', { matchCase: true });
+  assert.deepEqual(pagesFor(strict, 'US'), ['2']);
+  assert.deepEqual(pagesFor(strict, 'Bush'), ['4']);
+});
+
+test('match capitalization keeps the other normalizations (curly apostrophes, ligatures)', () => {
+  const r = buildIndex(pages('O\u2019Brien and the \uFB01nal word'), "O'Brien\nfinal", '', { matchCase: true });
+  assert.deepEqual(r.notFound, []);
 });

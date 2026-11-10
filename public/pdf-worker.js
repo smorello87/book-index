@@ -2,7 +2,7 @@
 // the page stays responsive even for long books and long term lists.
 //
 // Protocol: posts {type: 'ready'} once MuPDF has loaded. For each job
-// {pdf: ArrayBuffer, terms, names, pageOne} it posts {type: 'progress', done, total} per
+// {pdf: ArrayBuffer, terms, names, pageOne, matchCase} it posts {type: 'progress', done, total} per
 // page, {type: 'matching'} when reading is done, and finally either
 // {type: 'done', result, source, pageCount} or {type: 'error', name, message, pageCount?}.
 import * as mupdf from './vendor/mupdf/mupdf.js';
@@ -26,7 +26,8 @@ self.addEventListener('message', ({ data: job }) => {
 
     self.postMessage({ type: 'matching' });
     const { numbers, source } = pageNumbering(texts.length, labels, job.pageOne);
-    const result = buildIndex(texts.map((text, i) => ({ number: numbers[i], text })), job.terms, job.names);
+    const pages = texts.map((text, i) => ({ number: numbers[i], text }));
+    const result = buildIndex(pages, job.terms, job.names, { matchCase: Boolean(job.matchCase) });
     self.postMessage({ type: 'done', result, source, pageCount: texts.length });
   } catch (err) {
     self.postMessage({

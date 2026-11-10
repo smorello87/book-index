@@ -25,20 +25,21 @@ _TRANSLATE = str.maketrans({
 })
 
 
-def normalize_text(s):
-    """Normalize apostrophes, hyphens, ligatures and case so typed terms match typeset text."""
-    return unicodedata.normalize('NFKC', s.translate(_TRANSLATE)).lower()
+def normalize_text(s, keep_case=False):
+    """Normalize apostrophes, hyphens, ligatures and (unless keep_case) case, as in indexer.js."""
+    folded = unicodedata.normalize('NFKC', s.translate(_TRANSLATE))
+    return folded if keep_case else folded.lower()
 
 
 def collapse(s):
     return re.sub(r'\s+', ' ', s).strip()
 
 
-def page_variants(raw_text):
+def page_variants(raw_text, match_case=False):
     """Searchable forms of a page: as-is, and with line-end hyphenation rejoined or kept."""
     t = SOFT_HYPHEN_AT_EOL.sub('-', raw_text)
     forms = (t, LINE_END_HYPHEN.sub(r'\1', t), LINE_END_HYPHEN.sub(r'\1-', t))
-    return list(dict.fromkeys(collapse(normalize_text(f)) for f in forms))
+    return list(dict.fromkeys(collapse(normalize_text(f, keep_case=match_case)) for f in forms))
 
 
 def variant_regex(variant):
@@ -89,7 +90,8 @@ def process_terms(terms_text, reverse_names=False, entries=None):
         if not display:
             continue
         bucket = entries.setdefault(display, set())
-        bucket.update(n for n in (collapse(normalize_text(v)) for v in variants) if n)
+        # Case is kept here; build_index folds it unless match_case is set.
+        bucket.update(n for n in (collapse(normalize_text(v, keep_case=True)) for v in variants) if n)
     return entries
 
 
@@ -112,16 +114,24 @@ def sort_key(term):
     return (key, term)
 
 
-def build_index(pages, terms_text, names_text=''):
-    """pages: list of (number, text). Returns {index, not_found}."""
+def build_index(pages, terms_text, names_text='', match_case=False):
+    """pages: list of (number, text). Returns {index, not_found}.
+
+    match_case: "US" no longer matches "us" (the "Match capitalization" option).
+    """
     entries = process_terms(terms_text, reverse_names=False)
     process_terms(names_text, reverse_names=True, entries=entries)
-    matchers = [(term, [variant_regex(v) for v in variants], []) for term, variants in entries.items() if variants]
+    matchers = []
+    for term, variants in entries.items():
+        if variants:
+            texts = dict.fromkeys(v if match_case else v.lower() for v in variants)
+            matchers.append((term, [(v, variant_regex(v)) for v in texts], []))
 
     for number, text in pages:
-        forms = page_variants(text)
-        for _term, regexes, found in matchers:
-            if number not in found and any(r.search(f) for r in regexes for f in forms):
+        forms = page_variants(text, match_case)
+        for _term, variants, found in matchers:
+            # The substring check rules out most pages before the regex runs.
+            if number not in found and any(v in f and r.search(f) for v, r in variants for f in forms):
                 found.append(number)
 
     found = sorted(((t, p) for t, _, p in matchers if p), key=lambda tp: sort_key(tp[0]))

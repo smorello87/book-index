@@ -320,3 +320,22 @@ textarea:focus { outline: none; border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; }
 }
+
+/* --- Match capitalization option --- */
+.option { margin-top: -6px; }
+.checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.15rem;
+    color: var(--ink);
+    cursor: pointer;
+}
+.checkbox input {
+    width: 1.05rem;
+    height: 1.05rem;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+.checkbox input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

@@ -12,6 +12,7 @@ The tool runs entirely in the browser with [MuPDF](https://mupdf.com/) (the same
 - **Names in index form.** `Bush, George W.` searches for "George W. Bush" and is listed as typed. `King, Martin Luther, Jr.` finds both "Martin Luther King Jr." and "Martin Luther King, Jr.". A single name (`Madonna`) is searched as typed.
 - **Real page numbers.** Uses the page numbering stored in the PDF when there is one (so front matter can be `i, ii, iii`). Or set "Book page 1 is PDF page" to skip the front matter yourself.
 - **Typeset text matches what you type.** Curly apostrophes (`You’re`), ligatures (`ﬁ`), words hyphenated across lines (`intel-` / `ligence`), letter-spaced text and footnote markers (`Obama²`) are all handled.
+- **Optional case matching.** Tick "Match capitalization" so `US` finds "US" but not "us", and `Bush` finds the name but not the shrub. Off by default.
 - **Whole words only.** `help` does not match `helping`, and `1984` does not match `19845`. Punctuation in a term (`Help!`) is fine.
 - Alphabetical output grouped by letter (accents and leading punctuation ignored, so `#MeToo` files under M), a list of terms that were not found, and one-click copy as plain text (`term: 5, 12, 28`).
 
