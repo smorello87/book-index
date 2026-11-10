@@ -238,7 +238,11 @@ form.addEventListener('submit', async (e) => {
       notFound.hidden = false;
     }
 
-    (results.hidden ? notFound : results).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // When embedded, the parent page grows the iframe after it hears the new height, so
+    // wait a moment; scrolling right away stops short of the results.
+    const target = results.hidden ? notFound : results;
+    const delay = document.documentElement.classList.contains('embedded') ? 250 : 0;
+    setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), delay);
   } finally {
     submitBtn.disabled = false;
     progress.hidden = true;
