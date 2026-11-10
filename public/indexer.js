@@ -49,12 +49,31 @@ export function variantRegExp(variant) {
   return new RegExp(before + escapeRegExp(variant) + after, 'u');
 }
 
+const NAME_SUFFIX = /^(jr|sr|ii|iii|iv|v)\.?$/i;
+
+/**
+ * Search forms for a name typed in index order. "Obama, Barack" → "Barack Obama";
+ * "King, Martin Luther, Jr." → "Martin Luther King Jr." and "Martin Luther King, Jr.";
+ * a name without a comma ("Madonna") is searched as typed.
+ */
+export function reverseName(base) {
+  const parts = base.split(',').map((p) => p.trim());
+  if (parts.length < 2 || !parts[0] || !parts[1]) return [base];
+  const [last, ...rest] = parts;
+  if (rest.length >= 2 && NAME_SUFFIX.test(rest.at(-1))) {
+    const suffix = rest.pop();
+    const first = rest.join(', ');
+    return [`${first} ${last} ${suffix}`, `${first} ${last}, ${suffix}`];
+  }
+  return [`${rest.join(', ')} ${last}`];
+}
+
 /**
  * Parse one textarea into index entries, merging into `entries` (Map display → Set of variants).
  *
  * - `term (variant1, variant2)` searches for all three.
- * - With `reverseNames`, "Last, First" searches for "First Last"; a name without a comma
- *   ("Madonna") is searched as typed. Parenthetical variants are searched as typed.
+ * - With `reverseNames`, names are reversed as described in `reverseName`.
+ *   Parenthetical variants are searched as typed.
  */
 export function addTerms(entries, text, reverseNames = false) {
   for (const rawLine of (text || '').split(/\r?\n/)) {
@@ -66,14 +85,7 @@ export function addTerms(entries, text, reverseNames = false) {
     for (const m of parens) variants.push(...m[1].split(','));
 
     const base = collapse(line.replace(/\([^)]*\)/g, ' '));
-    let main = base;
-    if (reverseNames && base.includes(',')) {
-      const comma = base.indexOf(',');
-      const last = base.slice(0, comma).trim();
-      const first = base.slice(comma + 1).trim();
-      if (last && first) main = `${first} ${last}`;
-    }
-    variants.push(main);
+    variants.push(...(reverseNames ? reverseName(base) : [base]));
 
     const display = parens.length ? line : base;
     if (!display) continue;
@@ -97,7 +109,8 @@ export function addTerms(entries, text, reverseNames = false) {
  */
 export function pageNumbering(numPages, labels = null, bookPageOneAt = null) {
   const start = Number.parseInt(bookPageOneAt, 10);
-  if (Number.isInteger(start) && start > 1) {
+  if (Number.isInteger(start) && start >= 1) {
+    // Any value the user typed wins over the PDF's labels; 1 means plain physical pages.
     const numbers = Array.from({ length: numPages }, (_, i) => (i + 1 < start ? null : String(i + 2 - start)));
     return { numbers, source: 'offset' };
   }
@@ -124,27 +137,55 @@ export function buildIndex(pages, termsText, namesText = '') {
 
   const matchers = [...entries]
     .filter(([, variants]) => variants.size)
-    .map(([term, variants]) => ({ term, regexps: [...variants].map(variantRegExp), pages: [], seen: new Set() }));
+    .map(([term, variants]) => ({
+      term,
+      variants: [...variants].map((text) => ({ text, re: variantRegExp(text) })),
+      pages: [],
+      seen: new Set(),
+    }));
 
   for (const page of pages) {
     if (page.number == null) continue;
     const forms = pageVariants(page.text);
     for (const m of matchers) {
       if (m.seen.has(page.number)) continue;
-      if (m.regexps.some((re) => forms.some((f) => re.test(f)))) {
+      // The substring check is fast and rules out most pages before the regex runs.
+      if (m.variants.some((v) => forms.some((f) => f.includes(v.text) && v.re.test(f)))) {
         m.seen.add(page.number);
         m.pages.push(page.number);
       }
     }
   }
 
-  const found = matchers.filter((m) => m.pages.length);
-  found.sort((a, b) => a.term.localeCompare(b.term, undefined, { sensitivity: 'base' }) || a.term.localeCompare(b.term));
+  const found = matchers.filter((m) => m.pages.length).map((m) => ({ ...m, key: sortKey(m.term) }));
+  found.sort((a, b) => COLLATOR.compare(a.key, b.key) || COLLATOR.compare(a.term, b.term) || (a.term < b.term ? -1 : 1));
   const notFound = matchers.filter((m) => !m.pages.length).map((m) => m.term);
 
   return {
     index: found.map((m) => `${m.term}: ${m.pages.join(', ')}`).join('\n'),
-    entries: found.map((m) => ({ term: m.term, pages: m.pages })),
+    entries: found.map((m) => ({ term: m.term, pages: m.pages, letter: letterFor(m.key) })),
     notFound,
   };
+}
+
+// --- Alphabetical order and letter groups, from one shared key ---
+
+// Letters that Unicode does not decompose into a base letter plus an accent.
+const FOLD = { ł: 'l', ø: 'o', æ: 'ae', œ: 'oe', đ: 'd', ð: 'd', þ: 'th', ß: 'ss', ı: 'i' };
+// A fixed locale, so the order doesn't change with the visitor's browser language.
+const COLLATOR = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+
+/** Key an index sorts on: case, accents and leading punctuation ignored ("#MeToo" files under M). */
+export function sortKey(term) {
+  return normalizeText(term)
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[łøæœđðþßı]/g, (c) => FOLD[c])
+    .replace(/^[^\p{L}\p{N}]+/u, '');
+}
+
+/** Letter group for a sort key: its first letter, or "0–9" for numbers and symbols. */
+export function letterFor(key) {
+  const first = key.charAt(0);
+  return /\p{L}/u.test(first) ? first.toUpperCase() : '0–9';
 }

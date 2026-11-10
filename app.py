@@ -49,6 +49,22 @@ def variant_regex(variant):
     return re.compile(before + re.escape(variant) + after)
 
 
+NAME_SUFFIX = re.compile(r'^(jr|sr|ii|iii|iv|v)\.?$', re.IGNORECASE)
+
+
+def reverse_name(base):
+    """Search forms for "Last, First[, Suffix]" (see reverseName in indexer.js)."""
+    parts = [p.strip() for p in base.split(',')]
+    if len(parts) < 2 or not parts[0] or not parts[1]:
+        return [base]
+    last, rest = parts[0], parts[1:]
+    if len(rest) >= 2 and NAME_SUFFIX.match(rest[-1]):
+        suffix = rest.pop()
+        first = ', '.join(rest)
+        return [f'{first} {last} {suffix}', f'{first} {last}, {suffix}']
+    return [f"{', '.join(rest)} {last}"]
+
+
 def process_terms(terms_text, reverse_names=False, entries=None):
     """Parse one textarea into {display_term: set(search variants)}.
 
@@ -67,12 +83,7 @@ def process_terms(terms_text, reverse_names=False, entries=None):
             variants.extend(group.split(','))
 
         base = collapse(re.sub(r'\([^)]*\)', ' ', line))
-        main = base
-        if reverse_names and ',' in base:
-            last, first = (p.strip() for p in base.split(',', 1))
-            if last and first:
-                main = f'{first} {last}'
-        variants.append(main)
+        variants.extend(reverse_name(base) if reverse_names else [base])
 
         display = line if parens else base
         if not display:
@@ -90,9 +101,15 @@ def page_numbers(doc):
     return [str(i + 1) for i in range(len(labels))]
 
 
+# Letters that Unicode does not decompose into a base letter plus an accent (see indexer.js).
+_FOLD = str.maketrans({'ł': 'l', 'ø': 'o', 'æ': 'ae', 'œ': 'oe', 'đ': 'd', 'ð': 'd', 'þ': 'th', 'ß': 'ss', 'ı': 'i'})
+
+
 def sort_key(term):
-    stripped = ''.join(c for c in unicodedata.normalize('NFD', term) if not unicodedata.combining(c))
-    return (stripped.casefold(), term)
+    """Case, accents and leading punctuation ignored, as in indexer.js sortKey."""
+    key = ''.join(c for c in unicodedata.normalize('NFD', normalize_text(term)) if not unicodedata.combining(c))
+    key = re.sub(r'^[\W_]+', '', key.translate(_FOLD))
+    return (key, term)
 
 
 def build_index(pages, terms_text, names_text=''):

@@ -114,3 +114,18 @@ test('extractPdf reports password-protected and invalid files by name', () => {
   assert.throws(() => extractPdf(mupdf, locked), { name: 'PasswordException' });
   assert.throws(() => extractPdf(mupdf, new TextEncoder().encode('not a pdf at all')), { name: 'InvalidPDFException' });
 });
+
+test('a typed "book page 1" of 1 overrides the PDF labels', () => {
+  assert.deepEqual(pageNumbering(3, ['i', 'ii', '1'], 1), { numbers: ['1', '2', '3'], source: 'offset' });
+});
+
+test('names with a suffix: "King, Martin Luther, Jr." finds both common spellings', () => {
+  const r = buildIndex(pages('Martin Luther King Jr. spoke', 'as Martin Luther King, Jr. wrote'), '', 'King, Martin Luther, Jr.');
+  assert.deepEqual(pagesFor(r, 'King, Martin Luther, Jr.'), ['1', '2']);
+});
+
+test('sorting and letter groups share one key: leading punctuation and Ł/Ø ignored', () => {
+  const r = buildIndex(pages('#MeToo Łódź Ørsted Lagos Oslo Mars zebra'), '#MeToo\nŁódź\nØrsted\nLagos\nOslo\nMars\nzebra');
+  assert.deepEqual(r.entries.map((e) => e.term), ['Lagos', 'Łódź', 'Mars', '#MeToo', 'Ørsted', 'Oslo', 'zebra']);
+  assert.deepEqual([...new Set(r.entries.map((e) => e.letter))], ['L', 'M', 'O', 'Z']);
+});

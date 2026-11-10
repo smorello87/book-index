@@ -56,5 +56,14 @@ class EndpointTests(unittest.TestCase):
         self.assertNotIn('Traceback', resp.get_json()['error'])
 
 
+class ParityTests(unittest.TestCase):
+    def test_suffix_names_and_sorting_match_js(self):
+        r = build_index(pages('Martin Luther King Jr. spoke', 'as Martin Luther King, Jr. wrote',
+                              '#MeToo Łódź Ørsted Lagos Oslo Mars zebra'),
+                        '#MeToo\nŁódź\nØrsted\nLagos\nOslo\nMars\nzebra', 'King, Martin Luther, Jr.')
+        self.assertEqual([line.split(':')[0] for line in r['index'].split('\n')],
+                         ['King, Martin Luther, Jr.', 'Lagos', 'Łódź', 'Mars', '#MeToo', 'Ørsted', 'Oslo', 'zebra'])
+
+
 if __name__ == '__main__':
     unittest.main()

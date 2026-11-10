@@ -1,7 +1,11 @@
-import { buildIndex, pageNumbering } from './indexer.js';
-
-// --- PDF reader: MuPDF in a Web Worker, loaded on first use (about 3.6 MB, then cached) ---
+// --- PDF reader: MuPDF in a Web Worker, loaded on first use (about 4.6 MB, then cached) ---
+// The worker reads the PDF and builds the index; this page only shows progress and results.
 let enginePromise = null;
+
+function resetEngine(worker) {
+  worker?.terminate();
+  enginePromise = null;
+}
 
 function startEngine() {
   if (!enginePromise) {
@@ -17,7 +21,7 @@ function startEngine() {
         'error',
         (e) => {
           console.error(e);
-          enginePromise = null;
+          resetEngine(worker);
           reject(new Error('The PDF reader failed to load. Check your connection and reload the page.'));
         },
         { once: true }
@@ -27,7 +31,11 @@ function startEngine() {
   return enginePromise;
 }
 
-function readPdf(worker, buffer, onProgress) {
+// Errors that mean "this file", not "the reader is broken". Anything else (for example a
+// WebAssembly out-of-memory abort) may leave MuPDF unusable, so the worker is replaced.
+const FILE_ERRORS = new Set(['PasswordException', 'InvalidPDFException', 'NoTextError', 'PageOneError']);
+
+function runJob(worker, job, onProgress, onMatching) {
   return new Promise((resolve, reject) => {
     const cleanup = () => {
       worker.removeEventListener('message', onMessage);
@@ -35,25 +43,25 @@ function readPdf(worker, buffer, onProgress) {
     };
     const onMessage = ({ data }) => {
       if (data.type === 'progress') onProgress(data.done, data.total);
-      if (data.type === 'done') {
+      else if (data.type === 'matching') onMatching();
+      else if (data.type === 'done') {
         cleanup();
         resolve(data);
-      }
-      if (data.type === 'error') {
+      } else if (data.type === 'error') {
         cleanup();
-        reject(Object.assign(new Error(data.message), { name: data.name }));
+        if (!FILE_ERRORS.has(data.name)) resetEngine(worker);
+        reject(Object.assign(new Error(data.message), { name: data.name, pageCount: data.pageCount }));
       }
     };
     const onError = (e) => {
-      // The worker crashed (for example, out of memory on a huge file): start fresh next time.
+      // The worker itself crashed (for example, out of memory on a huge file).
       cleanup();
-      worker.terminate();
-      enginePromise = null;
+      resetEngine(worker);
       reject(new Error(e.message || 'the PDF reader stopped unexpectedly'));
     };
     worker.addEventListener('message', onMessage);
     worker.addEventListener('error', onError);
-    worker.postMessage(buffer, [buffer]);
+    worker.postMessage(job, [job.pdf]);
   });
 }
 
@@ -67,8 +75,10 @@ const submitBtn = $('submitBtn');
 const progress = $('progress');
 const progressBar = $('progressBar');
 const progressText = $('progressText');
+const srStatus = $('srStatus');
 const error = $('error');
 const results = $('results');
+const resultsTitle = $('resultsTitle');
 const resultsMeta = $('resultsMeta');
 const indexOutput = $('indexOutput');
 const copyBtn = $('copyBtn');
@@ -86,6 +96,10 @@ function showFile() {
   if (file) startEngine().catch(() => {}); // start downloading the reader while terms are typed
 }
 fileInput.addEventListener('change', showFile);
+
+// A file dropped anywhere else on the page must not replace the page (and the typed terms).
+for (const type of ['dragover', 'drop']) window.addEventListener(type, (e) => e.preventDefault());
+
 for (const type of ['dragenter', 'dragover']) {
   dropzone.addEventListener(type, (e) => {
     e.preventDefault();
@@ -111,38 +125,47 @@ function showError(message) {
   error.hidden = false;
 }
 
+// The visible progress line updates on every page; screen readers get only the start
+// and the outcome, through the separate status region.
+function announce(message) {
+  srStatus.textContent = message;
+}
+
 function setProgress(done, total) {
   progressBar.style.width = `${total ? (100 * done) / total : 0}%`;
   progressText.textContent = total ? `Reading page ${done} of ${total}` : 'Loading the PDF reader';
 }
 
 function describeNumbering(source, pageOne) {
+  if (source === 'offset' && pageOne === 1) return 'Page numbers are counted from the first page of the PDF, as you set.';
   if (source === 'offset') return `PDF page ${pageOne} counted as page 1; the ${pageOne - 1} pages before it were skipped.`;
   if (source === 'labels') return 'Page numbers come from the numbering stored in the PDF.';
   return 'Page numbers are counted from the first page of the PDF. If the book has front matter, fill in "Book page 1 is PDF page" and generate again.';
 }
 
-function friendlyPdfError(err) {
-  if (err?.name === 'PasswordException') return 'This PDF is password-protected. Remove the password and try again.';
-  if (err?.name === 'InvalidPDFException') return 'This file is not a valid PDF. Export the book as a PDF again and retry.';
-  return `This PDF could not be read (${err?.message || err}).`;
+function friendlyPdfError(err, pageOne) {
+  switch (err?.name) {
+    case 'PasswordException':
+      return 'This PDF is password-protected. Remove the password and try again.';
+    case 'InvalidPDFException':
+      return 'This file is not a readable PDF. Export the book as a PDF again and retry.';
+    case 'NoTextError':
+      return (
+        'This PDF has no selectable text, so it is probably a scan. Run OCR on it first ' +
+        '(for example, Scan & OCR in Adobe Acrobat), then try again.'
+      );
+    case 'PageOneError':
+      return `This PDF has ${err.pageCount} pages, so PDF page ${pageOne} can't be book page 1.`;
+    default:
+      return `This PDF could not be read (${err?.message || err}).`;
+  }
 }
 
 // --- Rendering the index like the back of a book ---
-function letterOf(term) {
-  const first = term
-    .replace(/^[^\p{L}\p{N}]+/u, '')
-    .normalize('NFD')
-    .charAt(0)
-    .toLocaleUpperCase();
-  return /\p{L}/u.test(first) ? first : '0–9';
-}
-
 function renderIndex(entries) {
   const groups = [];
   for (const entry of entries) {
-    const letter = letterOf(entry.term);
-    if (groups.at(-1)?.letter !== letter) groups.push({ letter, entries: [] });
+    if (groups.at(-1)?.letter !== entry.letter) groups.push({ letter: entry.letter, entries: [] });
     groups.at(-1).entries.push(entry);
   }
   indexOutput.replaceChildren(
@@ -169,6 +192,7 @@ function renderIndex(entries) {
 // --- Generate ---
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (submitBtn.disabled) return;
   error.hidden = true;
   results.hidden = true;
   notFound.hidden = true;
@@ -186,42 +210,40 @@ form.addEventListener('submit', async (e) => {
   submitBtn.disabled = true;
   progress.hidden = false;
   setProgress(0, 0);
+  announce('Reading the PDF.');
 
   try {
     let worker;
     try {
       worker = await startEngine();
     } catch (err) {
+      announce('');
       return showError(err.message);
     }
 
-    let extracted;
+    let outcome;
     try {
-      extracted = await readPdf(worker, await file.arrayBuffer(), setProgress);
+      const job = { pdf: await file.arrayBuffer(), terms, names, pageOne };
+      outcome = await runJob(worker, job, setProgress, () => {
+        progressText.textContent = 'Matching terms';
+      });
     } catch (err) {
       console.error(err);
-      return showError(friendlyPdfError(err));
+      announce('');
+      return showError(friendlyPdfError(err, pageOne));
     }
 
-    const { texts, labels } = extracted;
-    if (pageOne && pageOne > texts.length) {
-      return showError(`This PDF has ${texts.length} pages, so PDF page ${pageOne} can't be book page 1.`);
+    const { result, source, pageCount } = outcome;
+    if (!result.entries.length && !result.notFound.length) {
+      announce('');
+      return showError('None of the lines contain a term to search for. Enter one term or name per line.');
     }
-    if (!texts.some((t) => t.trim())) {
-      return showError(
-        'This PDF has no selectable text, so it is probably a scan. Run OCR on it first ' +
-          '(for example, Scan & OCR in Adobe Acrobat), then try again.'
-      );
-    }
-
-    const { numbers, source } = pageNumbering(texts.length, labels, pageOne);
-    const result = buildIndex(texts.map((text, i) => ({ number: numbers[i], text })), terms, names);
 
     if (result.entries.length) {
       plainIndex = result.index;
       renderIndex(result.entries);
       const count = result.entries.length;
-      resultsMeta.textContent = `${count} ${count === 1 ? 'entry' : 'entries'} from ${texts.length} pages. ${describeNumbering(source, pageOne)}`;
+      resultsMeta.textContent = `${count} ${count === 1 ? 'entry' : 'entries'} from ${pageCount} pages. ${describeNumbering(source, pageOne)}`;
       results.hidden = false;
     }
 
@@ -238,11 +260,20 @@ form.addEventListener('submit', async (e) => {
       notFound.hidden = false;
     }
 
+    announce(
+      `Index ready: ${result.entries.length} ${result.entries.length === 1 ? 'entry' : 'entries'}` +
+        (result.notFound.length ? `, ${result.notFound.length} not found.` : '.')
+    );
+
     // When embedded, the parent page grows the iframe after it hears the new height, so
     // wait a moment; scrolling right away stops short of the results.
     const target = results.hidden ? notFound : results;
+    const heading = results.hidden ? notFoundTitle : resultsTitle;
     const delay = document.documentElement.classList.contains('embedded') ? 250 : 0;
-    setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), delay);
+    setTimeout(() => {
+      heading.focus({ preventScroll: true });
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, delay);
   } finally {
     submitBtn.disabled = false;
     progress.hidden = true;
