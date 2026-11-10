@@ -23,27 +23,15 @@ const collapse = (s) => s.replace(/\s+/g, ' ').trim();
 
 // A hyphen at the end of a line, between two letters.
 const LINE_END_HYPHEN = /(\p{L})[-\u2010\u2011][^\S\n]*\n\s*(?=\p{L})/gu;
-// A line break between a letter and a lowercase letter. PDF.js drops soft hyphens, so a
-// word hyphenated with one ("intel" + soft hyphen + "ligence") reaches us as "intel\nligence".
-const LINE_BREAK_IN_WORD = /(\p{L})[^\S\n]*\n[^\S\n]*(?=\p{Ll})/gu;
-// Three or more single letters separated by spaces: letter-spaced text ("f a k e").
-const LETTER_SPACED = /(?<![\p{L}\p{M}])\p{L}(?: \p{L}){2,}(?![\p{L}\p{M}])/gu;
 
 /**
  * Return the searchable forms of one page's text. A word split across lines with a
- * hyphen is searchable both rejoined ("intelligence") and as a compound ("well-known");
- * letter-spaced words ("f a k e") are also searchable rejoined.
+ * hyphen is searchable both rejoined ("intelligence") and as a compound ("well-known").
  */
 export function pageVariants(rawText) {
   const t = rawText.replace(/\u00AD(?=[^\S\n]*\n)/g, '-'); // soft hyphen at a line end
-  const forms = [
-    t,
-    t.replace(LINE_END_HYPHEN, '$1'),
-    t.replace(LINE_END_HYPHEN, '$1-'),
-    t.replace(LINE_BREAK_IN_WORD, '$1'),
-  ].map((s) => collapse(normalizeText(s)));
-  forms.push(forms[0].replace(LETTER_SPACED, (m) => m.replace(/ /g, '')));
-  return [...new Set(forms)];
+  const forms = [t, t.replace(LINE_END_HYPHEN, '$1'), t.replace(LINE_END_HYPHEN, '$1-')];
+  return [...new Set(forms.map((s) => collapse(normalizeText(s))))];
 }
 
 const escapeRegExp = (s) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&');

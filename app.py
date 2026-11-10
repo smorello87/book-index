@@ -16,10 +16,7 @@ QUOTES = '\u0022\u0027\u0060\u00B4\u2018\u2019\u201C\u201D\u201E\u201F\u2039\u20
 EDGE_QUOTES = re.compile(f'^[{QUOTES}]+|[{QUOTES}]+$')
 LETTER = r'[^\W\d_]'
 LINE_END_HYPHEN = re.compile(rf'({LETTER})[-\u2010\u2011][^\S\n]*\n\s*(?={LETTER})')
-# Letter, line break, letter: rejoined only when the next line starts lowercase (see indexer.js).
-LINE_BREAK_IN_WORD = re.compile(rf'({LETTER})[^\S\n]*\n[^\S\n]*(?=({LETTER}))')
 SOFT_HYPHEN_AT_EOL = re.compile(r'\u00AD(?=[^\S\n]*\n)')
-LETTER_SPACED = re.compile(rf'(?<!{LETTER}){LETTER}(?: {LETTER}){{2,}}(?!{LETTER})')  # "f a k e"
 _TRANSLATE = str.maketrans({
     '\u00AD': None,  # soft hyphen
     **{c: "'" for c in '\u2018\u2019\u201A\u201B\u2032\u02BC\u0060\u00B4'},
@@ -38,14 +35,10 @@ def collapse(s):
 
 
 def page_variants(raw_text):
-    """Searchable forms of a page: as-is, with line-end hyphenation rejoined or kept, and
-    with letter-spaced words rejoined."""
+    """Searchable forms of a page: as-is, and with line-end hyphenation rejoined or kept."""
     t = SOFT_HYPHEN_AT_EOL.sub('-', raw_text)
-    joined = LINE_BREAK_IN_WORD.sub(lambda m: m.group(1) if m.group(2).islower() else m.group(0), t)
-    forms = [collapse(normalize_text(f)) for f in
-             (t, LINE_END_HYPHEN.sub(r'\1', t), LINE_END_HYPHEN.sub(r'\1-', t), joined)]
-    forms.append(LETTER_SPACED.sub(lambda m: m.group(0).replace(' ', ''), forms[0]))
-    return list(dict.fromkeys(forms))
+    forms = (t, LINE_END_HYPHEN.sub(r'\1', t), LINE_END_HYPHEN.sub(r'\1-', t))
+    return list(dict.fromkeys(collapse(normalize_text(f)) for f in forms))
 
 
 def variant_regex(variant):

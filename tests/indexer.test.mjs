@@ -19,10 +19,14 @@ test('words hyphenated across lines match both rejoined and as compounds', () =>
   assert.deepEqual(pagesFor(r, 'well-known'), ['2']);
 });
 
-test('line break inside a word (lost soft hyphen) rejoins, but capitalized next lines do not', () => {
-  const r = buildIndex(pages('the intel\nligence report', 'New\nYork'), 'intelligence\nNewYork');
+test('soft hyphen at a line end rejoins the word', () => {
+  const r = buildIndex(pages('the intel\u00AD\nligence report'), 'intelligence');
   assert.deepEqual(pagesFor(r, 'intelligence'), ['1']);
-  assert.deepEqual(r.notFound, ['NewYork']);
+});
+
+test('plain line breaks never glue words together (no "sand" in "Smith\'s / and")', () => {
+  const r = buildIndex(pages("at Lucie-Smith's\nand the rest of\nthe group"), 'sand\nofthe');
+  assert.deepEqual(r.notFound, ['sand', 'ofthe']);
 });
 
 test('ligatures and non-breaking spaces are normalized', () => {
@@ -68,11 +72,6 @@ test('page numbering: offset skips front matter, labels used when meaningful', (
   assert.equal(pageNumbering(3, null, null).source, 'physical');
   const r = buildIndex([{ number: null, text: 'apple' }, { number: '1', text: 'apple' }], 'apple');
   assert.deepEqual(pagesFor(r, 'apple'), ['1']);
-});
-
-test('letter-spaced text ("f a k e") still matches', () => {
-  const r = buildIndex(pages('a " f a k e edition" for " p e g s"'), 'fake\npegs');
-  assert.deepEqual(r.notFound, []);
 });
 
 test('pageVariants deduplicates identical forms', () => {
