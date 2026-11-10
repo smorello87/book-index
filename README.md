@@ -4,7 +4,7 @@ Generate a book index from a PDF. Upload the book, list the terms and names to i
 
 **Use it:** [stefanomorello.com/book-index.html](https://stefanomorello.com/book-index.html)
 
-The tool runs entirely in the browser with [PDF.js](https://mozilla.github.io/pdf.js/). The PDF is never uploaded anywhere: the server only delivers the page.
+The tool runs entirely in the browser with [MuPDF](https://mupdf.com/) (the same engine as PyMuPDF), compiled to WebAssembly. The PDF is never uploaded anywhere: the server only delivers the page. The PDF reader (about 3.6 MB compressed) is downloaded the first time a visitor chooses a file, then cached.
 
 ## Features
 
@@ -22,11 +22,12 @@ Still check the result by hand: remove entries that come from the bibliography o
 ```
 public/            the whole site, served as static files
   index.html       page
-  app.js           UI: reads the PDF, shows progress, renders the index
-  extract.js       PDF.js text extraction (shared with the tests)
+  app.js           UI: sends the PDF to the worker, shows progress, renders the index
+  pdf-worker.js    Web Worker that reads the PDF with MuPDF, off the main thread
+  extract.js       MuPDF text extraction (shared with the tests)
   indexer.js       matching rules (pure functions, shared with the tests)
   theme.js         iframe embedding: follows the parent site's theme, reports its height
-  vendor/pdfjs/    PDF.js build, cmaps and standard fonts (from pdfjs-dist)
+  vendor/mupdf/    MuPDF.js and its WebAssembly binary (from the mupdf npm package)
   _headers         security headers (CSP; only stefanomorello.com may embed it)
 wrangler.jsonc     Cloudflare Worker config: static assets only, no server code
 tests/             Node tests (npm test) and tests of the legacy Flask app
@@ -37,11 +38,11 @@ app.py, templates/, static/   legacy Flask version (PyMuPDF), kept as a referenc
 
 ```bash
 npm install
-npm test          # matching rules + an end-to-end run of tests/fixtures/sample.pdf through PDF.js
+npm test          # matching rules + an end-to-end run of tests/fixtures/sample.pdf through MuPDF
 npm run dev       # http://localhost:8787
 ```
 
-Upgrading PDF.js: change the `pdfjs-dist` version in `package.json`, then `npm install && npm run vendor`.
+Upgrading MuPDF: change the `mupdf` version in `package.json`, then `npm install && npm run vendor`.
 
 ## Deployment
 
@@ -53,7 +54,7 @@ On stefanomorello.com, `book-index.html` embeds the Worker in an iframe. The two
 
 ## Legacy Flask version
 
-`app.py` is the original server version (previously hosted on PythonAnywhere). It now follows the same matching rules as `public/indexer.js`, and it is useful for checking PDF.js results against PyMuPDF:
+`app.py` is the original server version (previously hosted on PythonAnywhere). It follows the same matching rules as `public/indexer.js` and is kept as a reference:
 
 ```bash
 pip install -r requirements.txt
@@ -63,6 +64,6 @@ python app.py     # http://127.0.0.1:5000
 
 ## License
 
-GNU General Public License v3.0. PDF.js is Apache-2.0.
+GNU General Public License v3.0. MuPDF.js is AGPL-3.0 (© Artifex); the complete source of this site is in this repository.
 
 Developed by [Stefano Morello](https://stefanomorello.com).

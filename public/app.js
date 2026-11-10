@@ -1,14 +1,61 @@
-import * as pdfjsLib from './vendor/pdfjs/pdf.min.mjs';
-import { extractPdf } from './extract.js';
 import { buildIndex, pageNumbering } from './indexer.js';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
+// --- PDF reader: MuPDF in a Web Worker, loaded on first use (about 3.6 MB, then cached) ---
+let enginePromise = null;
 
-const PDF_OPTIONS = {
-  cMapUrl: new URL('./vendor/pdfjs/cmaps/', import.meta.url).href,
-  cMapPacked: true,
-  standardFontDataUrl: new URL('./vendor/pdfjs/standard_fonts/', import.meta.url).href,
-};
+function startEngine() {
+  if (!enginePromise) {
+    enginePromise = new Promise((resolve, reject) => {
+      const worker = new Worker(new URL('./pdf-worker.js', import.meta.url), { type: 'module' });
+      const onMessage = (e) => {
+        if (e.data?.type !== 'ready') return;
+        worker.removeEventListener('message', onMessage);
+        resolve(worker);
+      };
+      worker.addEventListener('message', onMessage);
+      worker.addEventListener(
+        'error',
+        (e) => {
+          console.error(e);
+          enginePromise = null;
+          reject(new Error('The PDF reader failed to load. Check your connection and reload the page.'));
+        },
+        { once: true }
+      );
+    });
+  }
+  return enginePromise;
+}
+
+function readPdf(worker, buffer, onProgress) {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      worker.removeEventListener('message', onMessage);
+      worker.removeEventListener('error', onError);
+    };
+    const onMessage = ({ data }) => {
+      if (data.type === 'progress') onProgress(data.done, data.total);
+      if (data.type === 'done') {
+        cleanup();
+        resolve(data);
+      }
+      if (data.type === 'error') {
+        cleanup();
+        reject(Object.assign(new Error(data.message), { name: data.name }));
+      }
+    };
+    const onError = (e) => {
+      // The worker crashed (for example, out of memory on a huge file): start fresh next time.
+      cleanup();
+      worker.terminate();
+      enginePromise = null;
+      reject(new Error(e.message || 'the PDF reader stopped unexpectedly'));
+    };
+    worker.addEventListener('message', onMessage);
+    worker.addEventListener('error', onError);
+    worker.postMessage(buffer, [buffer]);
+  });
+}
 
 const $ = (id) => document.getElementById(id);
 const form = $('indexForm');
@@ -36,6 +83,7 @@ function showFile() {
   const file = fileInput.files[0];
   dropzoneText.textContent = file ? 'Choose a different PDF' : 'Choose a PDF, or drop it here';
   dropzoneFile.textContent = file ? file.name : '';
+  if (file) startEngine().catch(() => {}); // start downloading the reader while terms are typed
 }
 fileInput.addEventListener('change', showFile);
 for (const type of ['dragenter', 'dragover']) {
@@ -65,7 +113,7 @@ function showError(message) {
 
 function setProgress(done, total) {
   progressBar.style.width = `${total ? (100 * done) / total : 0}%`;
-  progressText.textContent = total ? `Reading page ${done} of ${total}` : 'Opening the PDF';
+  progressText.textContent = total ? `Reading page ${done} of ${total}` : 'Loading the PDF reader';
 }
 
 function describeNumbering(source, pageOne) {
@@ -140,9 +188,16 @@ form.addEventListener('submit', async (e) => {
   setProgress(0, 0);
 
   try {
+    let worker;
+    try {
+      worker = await startEngine();
+    } catch (err) {
+      return showError(err.message);
+    }
+
     let extracted;
     try {
-      extracted = await extractPdf(pdfjsLib, new Uint8Array(await file.arrayBuffer()), PDF_OPTIONS, setProgress);
+      extracted = await readPdf(worker, await file.arrayBuffer(), setProgress);
     } catch (err) {
       console.error(err);
       return showError(friendlyPdfError(err));

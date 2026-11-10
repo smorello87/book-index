@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import * as mupdf from 'mupdf';
 import { buildIndex, pageNumbering, pageVariants, addTerms } from '../public/indexer.js';
-import { extractPdf, joinTextItems } from '../public/extract.js';
+import { extractPdf } from '../public/extract.js';
 
 const pages = (...texts) => texts.map((text, i) => ({ number: String(i + 1), text }));
 const pagesFor = (result, term) => result.entries.find((e) => e.term === term)?.pages;
@@ -19,7 +19,7 @@ test('words hyphenated across lines match both rejoined and as compounds', () =>
   assert.deepEqual(pagesFor(r, 'well-known'), ['2']);
 });
 
-test('soft hyphen dropped by PDF.js still rejoins, but capitalized next lines do not', () => {
+test('line break inside a word (lost soft hyphen) rejoins, but capitalized next lines do not', () => {
   const r = buildIndex(pages('the intel\nligence report', 'New\nYork'), 'intelligence\nNewYork');
   assert.deepEqual(pagesFor(r, 'intelligence'), ['1']);
   assert.deepEqual(r.notFound, ['NewYork']);
@@ -75,20 +75,13 @@ test('letter-spaced text ("f a k e") still matches', () => {
   assert.deepEqual(r.notFound, []);
 });
 
-test('joinTextItems adds a space between visibly separate items only', () => {
-  const item = (str, x, width, y = 100, hasEOL = false) => ({ str, transform: [10, 0, 0, 10, x, y], width, hasEOL });
-  assert.equal(joinTextItems([item('with', 0, 20), item('a', 30, 5)]), 'with a');
-  assert.equal(joinTextItems([item('Fran', 0, 20), item('çois', 20.5, 20)]), 'François');
-  assert.equal(joinTextItems([item('intel-', 0, 30, 100, true), item('ligence', 0, 35, 88)]), 'intel-\nligence');
-});
-
 test('pageVariants deduplicates identical forms', () => {
   assert.deepEqual(pageVariants('plain text'), ['plain text']);
 });
 
-test('end to end: fixture PDF through PDF.js', async () => {
+test('end to end: fixture PDF through MuPDF', () => {
   const data = new Uint8Array(readFileSync(new URL('./fixtures/sample.pdf', import.meta.url)));
-  const { texts, labels } = await extractPdf(pdfjsLib, data, { verbosity: 0 });
+  const { texts, labels } = extractPdf(mupdf, data);
   const { numbers, source } = pageNumbering(texts.length, labels, null);
   assert.equal(source, 'labels');
   const r = buildIndex(
@@ -115,4 +108,10 @@ test('end to end: fixture PDF through PDF.js', async () => {
     ].join('\n')
   );
   assert.deepEqual(r.notFound, []);
+});
+
+test('extractPdf reports password-protected and invalid files by name', () => {
+  const locked = new Uint8Array(readFileSync(new URL('./fixtures/locked.pdf', import.meta.url)));
+  assert.throws(() => extractPdf(mupdf, locked), { name: 'PasswordException' });
+  assert.throws(() => extractPdf(mupdf, new TextEncoder().encode('not a pdf at all')), { name: 'InvalidPDFException' });
 });

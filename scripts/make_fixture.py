@@ -24,3 +24,10 @@ doc.set_page_labels([
 out = os.path.join(os.path.dirname(__file__), '..', 'tests', 'fixtures', 'sample.pdf')
 doc.save(out, garbage=4, deflate=True)
 print('wrote', os.path.normpath(out))
+
+# Password-protected fixture for the error-path test.
+locked = pymupdf.open()
+locked.new_page().insert_text((72, 72), 'secret', fontname='helv')
+locked_out = os.path.join(os.path.dirname(__file__), '..', 'tests', 'fixtures', 'locked.pdf')
+locked.save(locked_out, encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw='pw', owner_pw='owner')
+print('wrote', os.path.normpath(locked_out))
